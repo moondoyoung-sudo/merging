@@ -1,0 +1,115 @@
+:root {
+  --bg: #dfe6df;
+  --ink: #1d2a2c;
+  --board: #263639;
+  --cell: #2f4246;
+  --cell-hi: #3d565b;
+  --muted: #5d6f6e;
+  --ap: #e9a23b;
+  --red: #ff2d2d;
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+.chain-A { --tile: #5aa9d6; }
+.chain-B { --tile: #e8744f; }
+.chain-C { --tile: #4fb08a; }
+.chain-D { --tile: #9b6bb5; }
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body, #root { margin: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Gowun Dodum', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+  padding: calc(12px + var(--safe-t)) 12px calc(12px + var(--safe-b));
+}
+#root { display: flex; justify-content: center; }
+.app { width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: 10px; }
+.app.loading { color: var(--muted); padding-top: 40vh; align-items: center; }
+
+/* HUD */
+.hud { display: flex; align-items: center; gap: 12px; }
+.ap { flex: 1; background: var(--ink); color: #fff; border-radius: 14px; padding: 8px 12px; }
+.ap-top { display: flex; justify-content: space-between; align-items: baseline; }
+.ap-num { font-family: 'Black Han Sans', sans-serif; font-size: 26px; color: var(--ap); }
+.ap-num small { font-size: 14px; color: #9fb1b0; }
+.ap-timer { font-size: 13px; color: #b8c8c6; }
+.bar { height: 6px; border-radius: 3px; background: #3a4d50; margin-top: 6px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--ap); transition: width 0.4s; }
+.gen {
+  border: 0; border-radius: 14px; background: #5aa9d6; color: #10222b;
+  font-family: 'Black Han Sans', sans-serif; font-size: 20px;
+  padding: 0 16px; height: 62px; min-width: 92px; cursor: pointer; box-shadow: 0 4px 0 #3b7ea3;
+}
+.gen:active { transform: translateY(3px); box-shadow: 0 1px 0 #3b7ea3; }
+.gen span { display: block; font-family: 'Gowun Dodum', sans-serif; font-size: 12px; opacity: 0.75; }
+.gen:disabled { filter: grayscale(0.8); opacity: 0.6; }
+
+/* 판 */
+.board {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 6px;
+  background: var(--board); border-radius: 16px; touch-action: none; position: relative;
+}
+.cell { aspect-ratio: 1; background: var(--cell); border-radius: 9px; position: relative; }
+.cell.over { background: var(--cell-hi); outline: 2px solid #ffffff55; }
+
+/* 타일: 레벨(--t)이 오를수록 진해짐 */
+.tile {
+  position: absolute; inset: 3px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Black Han Sans', sans-serif; color: #fff; cursor: grab;
+  font-size: clamp(18px, 6.2vw, 28px); text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.2);
+  background: color-mix(in srgb, var(--tile) calc(70% + var(--t) * 30%), #fff);
+}
+.tile.top { outline: 2px solid #fff8; }
+.tile.src { opacity: 0.25; }
+.tile .dot {
+  position: absolute; right: 4px; top: 3px; width: 7px; height: 7px;
+  border-radius: 50%; background: var(--red); box-shadow: 0 0 0 1.5px #fff;
+}
+.tile .lv {
+  position: absolute; left: 5px; bottom: 2px; font-size: 9px; opacity: 0.7;
+  font-family: 'Gowun Dodum', sans-serif;
+}
+.tile.pop { animation: pop 0.28s ease-out; }
+.tile.spawn { animation: spawn 0.3s ease-out; }
+@keyframes pop { 0% { transform: scale(0.7); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
+@keyframes spawn { 0% { transform: scale(0.2); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+.ghost {
+  position: fixed; z-index: 50; pointer-events: none;
+  transform: translate(-50%, -60%) scale(1.12);
+  filter: drop-shadow(0 8px 8px rgba(0, 0, 0, 0.35));
+}
+.ghost .tile { position: static; width: 100%; height: 100%; }
+
+/* 범례 / 푸터 */
+.legend { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+.legend > div { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.chip {
+  display: inline-block; min-width: 18px; text-align: center; border-radius: 5px; color: #fff;
+  padding: 1px 3px; font-family: 'Black Han Sans', sans-serif; font-weight: 400;
+  background: color-mix(in srgb, var(--tile) calc(70% + var(--t) * 30%), #fff);
+}
+.legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
+.foot { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--muted); }
+.foot button {
+  border: 1px solid #9db0ab; background: transparent; border-radius: 10px;
+  padding: 6px 10px; color: var(--muted); font: inherit; cursor: pointer;
+}
+
+.toast {
+  position: fixed; left: 50%; bottom: calc(24px + var(--safe-b));
+  transform: translateX(-50%) translateY(20px);
+  background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 12px; font-size: 14px;
+  opacity: 0; transition: 0.25s; pointer-events: none; z-index: 99;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tile.pop, .tile.spawn { animation: none; }
+}
