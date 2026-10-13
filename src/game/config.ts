@@ -1,31 +1,41 @@
 import type { ChainId, Item } from './types';
 
 /* ===== 밸런스 / 규칙 설정: 여기만 고치면 됩니다 ===== */
-export const COLS = 7;
-export const ROWS = 9;
+export const COLS = 10;
+export const ROWS = 10;
 
 export const AP_MAX = 100;
-export const AP_REGEN_MS = 60_000; // 1분에 1개
+export const AP_REGEN_MS = 60_000; // 1분에 1개 (충전 버튼은 즉시 가득 채움)
 
-export const GEN_COST = 1; // 'a 생성' 버튼 비용
-export const SPAWN_COST = 1; // 더블클릭 생성 비용
-export const CONSUME_SOURCE = false; // true면 더블클릭한 아이템이 사라짐
-export const START_ITEMS = 8; // 시작 시 깔리는 a 개수
+export const START_ITEMS = 10; // 스테이지 시작 시 깔리는 A 개수 (정답 칸이 아닌 곳에)
+export const STAGE_COUNT = 30; // 총 스테이지 수
 
 export const BASE_ITEM: Item = { chain: 'A', level: 0 };
 
+/** A부터 Z까지 한 체인. 같은 글자 둘을 합치면 다음 글자 (Z는 마지막) */
 export const CHAINS: Record<ChainId, readonly string[]> = {
-  A: ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
-  B: ['ㄱ', 'ㄴ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅅ'],
-  C: ['ㅏ', 'ㅑ', 'ㅓ', 'ㅕ', 'ㅗ', 'ㅛ'],
-  D: ['1', '2', '3', '4', '5', '6'],
+  A: [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'],
 };
 export const CHAIN_IDS = Object.keys(CHAINS) as ChainId[];
 
 /**
- * 더블클릭 시 나오는 아이템.
- * chain의 fromLevel(이상) ~ toLevel(이하, 생략하면 끝까지)에 적용.
- * drops가 여러 개면 균등 확률로 하나가 나옴.
+ * 생성기 버튼: 누르면 해당 글자 1개가 판에 나옴 (AP cost 소모).
+ * letter를 바꾸거나 추가/삭제하면 버튼이 그대로 따라 바뀝니다.
+ */
+export interface GeneratorDef {
+  letter: string;
+  cost: number;
+}
+export const GENERATORS: readonly GeneratorDef[] = [
+  { letter: 'A', cost: 1 },
+  { letter: 'H', cost: 1 },
+  { letter: 'L', cost: 1 },
+  { letter: 'W', cost: 1 },
+];
+
+/**
+ * 더블클릭 생성 규칙 (지금은 비어 있음 = 더블클릭 기능 꺼짐. 생성은 위 생성기 버튼으로).
+ * 필요하면 { chain, fromLevel, drops } 를 추가해서 다시 켤 수 있어요.
  */
 export interface SpawnRule {
   chain: ChainId;
@@ -33,17 +43,6 @@ export interface SpawnRule {
   toLevel?: number;
   drops: readonly Item[];
 }
-
-export const SPAWN_RULES: readonly SpawnRule[] = [
-  // c 이상(c,d,e,f,g) → ㄱ 또는 ㅏ
-  {
-    chain: 'A',
-    fromLevel: 2,
-    drops: [
-      { chain: 'B', level: 0 },
-      { chain: 'C', level: 0 },
-    ],
-  },
-  // ㅕ 이상(ㅕ,ㅗ,ㅛ) → 1
-  { chain: 'C', fromLevel: 3, drops: [{ chain: 'D', level: 0 }] },
-];
+export const SPAWN_COST = 1;
+export const CONSUME_SOURCE = false;
+export const SPAWN_RULES: readonly SpawnRule[] = [];

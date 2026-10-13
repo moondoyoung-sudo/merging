@@ -1,12 +1,17 @@
 import { useRef, useState } from 'react';
 import type { PointerEvent as RPointerEvent } from 'react';
-import type { Fx } from '../hooks/useGame';
+import { COLS } from '../game/config';
+import type { Puzzle } from '../game/puzzle';
 import type { Board as BoardType, Item } from '../game/types';
+import type { Fx } from '../hooks/useGame';
 import { Tile } from './Tile';
 
 interface Props {
+  puzzle: Puzzle;
   board: BoardType;
-  fx: Fx | null;
+  locked: boolean[];
+  fx: Record<number, Fx>;
+  highlight: ReadonlySet<number>;
   onMove: (from: number, to: number) => void;
   onActivate: (index: number) => void;
 }
@@ -16,6 +21,8 @@ interface Drag {
   startX: number;
   startY: number;
   moved: boolean;
+  canDrag: boolean; // 고정된 글자는 드래그 불가 (더블탭 생성만 가능)
+  tapOk: boolean;
   size: number;
 }
 interface Ghost {
@@ -34,7 +41,7 @@ function cellIndexAt(x: number, y: number): number {
   return cell ? Number(cell.dataset.index) : -1;
 }
 
-export function Board({ board, fx, onMove, onActivate }: Props) {
+export function Board({ puzzle, board, locked, fx, highlight, onMove, onActivate }: Props) {
   const boardRef = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
   const lastTap = useRef({ index: -1, time: 0 });
@@ -53,6 +60,8 @@ export function Board({ board, fx, onMove, onActivate }: Props) {
       startX: e.clientX,
       startY: e.clientY,
       moved: false,
+      canDrag: !locked[index],
+      tapOk: true,
       size: cell.getBoundingClientRect().width - 6,
     };
     boardRef.current?.setPointerCapture(e.pointerId);
@@ -61,7 +70,12 @@ export function Board({ board, fx, onMove, onActivate }: Props) {
   const onPointerMove = (e: RPointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     if (!d) return;
-    if (!d.moved && Math.hypot(e.clientX - d.startX, e.clientY - d.startY) > DRAG_THRESHOLD) {
+    const far = Math.hypot(e.clientX - d.startX, e.clientY - d.startY) > DRAG_THRESHOLD;
+    if (!d.canDrag) {
+      if (far) d.tapOk = false;
+      return;
+    }
+    if (!d.moved && far) {
       d.moved = true;
       setDragFrom(d.from);
     }
@@ -80,14 +94,14 @@ export function Board({ board, fx, onMove, onActivate }: Props) {
     setGhost(null);
     setHover(-1);
     setDragFrom(-1);
+    if (cancelled) return;
 
     if (d.moved) {
-      if (cancelled) return;
       const target = cellIndexAt(e.clientX, e.clientY);
       if (target >= 0) onMove(d.from, target);
       return;
     }
-    if (cancelled) return;
+    if (!d.tapOk) return;
     // 터치/마우스 공용 더블탭 감지
     const t = Date.now();
     if (lastTap.current.index === d.from && t - lastTap.current.time < DOUBLE_TAP_MS) {
@@ -102,6 +116,7 @@ export function Board({ board, fx, onMove, onActivate }: Props) {
     <div
       ref={boardRef}
       className="board"
+      style={{ gridTemplateColumns: `repeat(${COLS}, 1fr)` }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={(e) => finish(e, false)}
@@ -109,15 +124,26 @@ export function Board({ board, fx, onMove, onActivate }: Props) {
       onContextMenu={(e) => e.preventDefault()}
     >
       {board.map((item, i) => {
-        const hasFx = fx?.index === i;
+        const effect = fx[i];
+        const number = puzzle.numbers[i];
+        const cls = [
+          'cell',
+          puzzle.answers[i] !== null && 'ans',
+          highlight.has(i) && 'hl',
+          hover === i && 'over',
+        ]
+          .filter(Boolean)
+          .join(' ');
         return (
-          <div key={i} className={`cell${hover === i ? ' over' : ''}`} data-index={i}>
+          <div key={i} className={cls} data-index={i}>
+            {number !== null && <span className="num">{number}</span>}
             {item && (
               <Tile
-                key={hasFx ? `fx-${fx.id}` : 'static'}
+                key={effect ? `fx-${effect.id}` : 'static'}
                 item={item}
-                fx={hasFx ? fx.kind : undefined}
+                fx={effect?.kind}
                 dimmed={dragFrom === i}
+                locked={locked[i]}
               />
             )}
           </div>

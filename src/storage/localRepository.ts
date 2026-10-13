@@ -2,7 +2,7 @@ import { sanitizeState } from '../game/rules';
 import type { GameState } from '../game/types';
 import type { GameRepository } from './repository';
 
-const KEY = 'letter-merge-save-v1';
+const KEY = 'crossword-merge-save-v1';
 
 export class LocalGameRepository implements GameRepository {
   async load(): Promise<GameState | null> {

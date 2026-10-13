@@ -14,15 +14,22 @@ export function regenAp(state: GameState, now: number): GameState {
   };
 }
 
-/** AP 소모. 부족하면 null. 가득 찬 상태에서 처음 쓰면 그 시점부터 충전이 시작됨. */
+/** AP 소모 (총 사용량에도 누적). 부족하면 null. 가득 찬 상태에서 처음 쓰면 그 시점부터 충전이 시작됨. */
 export function spendAp(state: GameState, cost: number, now: number): GameState | null {
   const s = regenAp(state, now);
   if (s.ap < cost) return null;
   return {
     ...s,
     ap: s.ap - cost,
+    apUsed: s.apUsed + cost,
     apUpdatedAt: s.ap >= AP_MAX ? now : s.apUpdatedAt,
   };
+}
+
+/** AP 충전 버튼: 대가 없이 즉시 가득 채움 (총 사용량은 그대로). 이미 가득이면 같은 객체. */
+export function refillAp(state: GameState, now: number): GameState {
+  if (state.ap >= AP_MAX) return state;
+  return { ...state, ap: AP_MAX, apUpdatedAt: now };
 }
 
 /** 다음 AP 충전까지 남은 ms. 가득 차 있으면 null. */
