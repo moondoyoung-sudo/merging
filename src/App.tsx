@@ -7,6 +7,7 @@ import { ClueList } from './components/ClueList';
 import { LetterGuide } from './components/LetterGuide';
 import { AP_MAX, GENERATORS, STAGE_COUNT } from './game/config';
 
+import { generatorLabel } from './game/generators';
 import { completedWordIds, itemForLetter, lockedMask } from './game/rules';
 import { useGame } from './hooks/useGame';
 import { createRepository } from './storage';
@@ -36,14 +37,14 @@ export default function App() {
       <div className="gens">
         {GENERATORS.map((g) => (
           <button
-            key={g.letter}
+            key={generatorLabel(g)}
             className="gen"
-            style={{ '--hue': hueOf(itemForLetter(g.letter)?.level ?? 0) } as CSSProperties}
+            style={{ '--hue': hueOf(itemForLetter(g.from)?.level ?? 0) } as CSSProperties}
             onClick={() => game.generate(g)}
             disabled={state.ap < g.cost}
           >
-            {g.letter}
-            <span>생성기 · AP -{g.cost}</span>
+            {generatorLabel(g)}
+            <span>AP -{g.cost}</span>
           </button>
         ))}
       </div>

@@ -52,11 +52,11 @@ body {
 .refill span { display: block; font-family: 'Gowun Dodum', sans-serif; font-size: 10px; opacity: 0.75; }
 .refill:disabled { filter: grayscale(0.7); opacity: 0.55; box-shadow: none; cursor: default; }
 
-/* 생성기 버튼 4개 */
-.gens { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; flex: none; }
+/* 생성기 버튼 5개 */
+.gens { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; flex: none; }
 .gen {
   border: 0; border-radius: 12px; color: #fff; cursor: pointer; padding: 4px 2px 5px; line-height: 1.1;
-  font-family: 'Black Han Sans', sans-serif; font-size: 22px; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+  font-family: 'Black Han Sans', sans-serif; font-size: 18px; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
   background: hsl(var(--hue) 60% 42%); box-shadow: 0 4px 0 hsl(var(--hue) 60% 28%);
 }
 .gen:active { transform: translateY(3px); box-shadow: 0 1px 0 hsl(var(--hue) 60% 28%); }
@@ -170,6 +170,10 @@ body {
   background: hsl(var(--hue) 60% 42%);
 }
 .guide p { margin: 4px 0 0; line-height: 1.45; }
+.gen-odds { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.odds-row { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 8px; }
+.odds-row strong { width: 34px; color: var(--ink); }
+.odds { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; }
 .legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
 
 .toast {

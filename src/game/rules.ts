@@ -1,4 +1,5 @@
 import { spendAp } from './ap';
+import { rollGeneratorLetter } from './generators';
 import {
   AP_MAX,
   BASE_ITEM,
@@ -214,7 +215,7 @@ export function itemForLetter(letter: string): Item | null {
   return null;
 }
 
-/** 생성기 버튼: 해당 글자 1개를 판에 생성 (AP cost 소모) */
+/** 생성기 버튼: 구간 안에서 확률대로 뽑은 글자 1개를 판에 생성 (AP cost 소모) */
 export function applyGenerate(
   state: GameState,
   puzzle: Puzzle,
@@ -222,13 +223,13 @@ export function applyGenerate(
   now: number,
   rng: Rng = Math.random,
 ): ActionResult {
-  const item = itemForLetter(generator.letter);
-  if (!item) return { ok: false, reason: 'not-spawnable' };
   const avoid = (i: number) => puzzle.answers[i] !== null;
   const dest = findEmptyNear(state.board, Math.floor((COLS * ROWS) / 2), rng, avoid);
   if (dest < 0) return { ok: false, reason: 'no-space' };
   const paid = spendAp(state, generator.cost, now);
   if (!paid) return { ok: false, reason: 'no-ap' };
+  const item = itemForLetter(rollGeneratorLetter(generator, rng));
+  if (!item) return { ok: false, reason: 'not-spawnable' };
   const board = paid.board.slice();
   board[dest] = item;
   return { ok: true, state: { ...paid, board }, placedAt: dest };

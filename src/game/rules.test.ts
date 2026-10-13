@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { msUntilNextAp, refillAp, regenAp, spendAp } from './ap';
 import { AP_MAX, AP_REGEN_MS, CHAINS, CHAIN_IDS, COLS, GENERATORS, ROWS, SPAWN_RULES } from './config';
+import { generatorLabel, generatorLetters, generatorProbabilities, rollGeneratorLetter } from './generators';
 import { compilePuzzle } from './puzzle';
+import { mulberry32 } from './random';
 import {
   applyDrop,
   applyGenerate,
@@ -93,16 +95,55 @@ describe('고정(정답) 규칙', () => {
   });
 });
 
-describe('생성기 버튼', () => {
-  const gen = (letter: string) => GENERATORS.find((g) => g.letter === letter)!;
+describe('생성기 버튼 (구간 + 확률)', () => {
+  const gen = GENERATORS[0]!; // A~G
+  const range = (g: (typeof GENERATORS)[number]) => generatorLetters(g).join('');
 
-  it('생성기는 A, H, L, W 네 개이고 각각 해당 글자를 만든다', () => {
-    expect(GENERATORS.map((g) => g.letter)).toEqual(['A', 'H', 'L', 'W']);
+  it('버튼은 5개: A~G, H~K, L~P, Q~V, W~Z 이고 A~Z를 빠짐없이 한 번씩 덮는다', () => {
+    expect(GENERATORS.map(generatorLabel)).toEqual(['A~G', 'H~K', 'L~P', 'Q~V', 'W~Z']);
+    expect(GENERATORS.map(range).join('')).toBe('ABCDEFGHIJKLMNOPQRSTUVWXYZ');
+  });
+
+  it('확률은 합이 1이고, 앞글자가 가장 높으며 뒤로 갈수록 줄어든다 (마지막 글자는 거의 안 나옴)', () => {
     for (const g of GENERATORS) {
-      const r = applyGenerate(empty(), puzzle, g, T0);
+      const p = generatorProbabilities(g);
+      expect(p.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 10);
+      for (let i = 1; i < p.length; i++) expect(p[i]!).toBeLessThan(p[i - 1]!);
+      expect(p[0]!).toBeGreaterThan(0.5);
+      expect(p[p.length - 1]!).toBeLessThan(0.05);
+    }
+  });
+
+  it('W~Z: 실제로 많이 뽑아 보면 W > X > Y > Z 순이고 Z는 드물다', () => {
+    const wz = GENERATORS[4]!;
+    const rng = mulberry32(12345);
+    const count: Record<string, number> = { W: 0, X: 0, Y: 0, Z: 0 };
+    const N = 20000;
+    for (let i = 0; i < N; i++) count[rollGeneratorLetter(wz, rng)]!++;
+    expect(count.W!).toBeGreaterThan(count.X!);
+    expect(count.X!).toBeGreaterThan(count.Y!);
+    expect(count.Y!).toBeGreaterThan(count.Z!);
+    expect(count.Z!).toBeGreaterThan(0); // 아주 가끔은 나옴
+    expect(count.Z! / N).toBeLessThan(0.06);
+    expect(count.W! / N).toBeGreaterThan(0.55);
+  });
+
+  it('어떤 난수가 와도 구간 밖 글자는 나오지 않는다', () => {
+    for (const g of GENERATORS) {
+      const letters = new Set(generatorLetters(g));
+      for (const r of [0, 0.25, 0.5, 0.75, 0.999999, 0.9999999999]) {
+        expect(letters.has(rollGeneratorLetter(g, () => r))).toBe(true);
+      }
+    }
+  });
+
+  it('누르면 구간 안의 글자 1개가 나오고 AP가 소모·누적된다', () => {
+    const rng = mulberry32(7);
+    for (const g of GENERATORS) {
+      const r = applyGenerate(empty(), puzzle, g, T0, rng);
       expect(r.ok).toBe(true);
       if (r.ok) {
-        expect(labelOf(r.state.board[r.placedAt]!)).toBe(g.letter);
+        expect(generatorLetters(g)).toContain(labelOf(r.state.board[r.placedAt]!));
         expect(r.state.ap).toBe(AP_MAX - g.cost);
         expect(r.state.apUsed).toBe(g.cost);
       }
@@ -113,21 +154,21 @@ describe('생성기 버튼', () => {
     let s = empty();
     s = { ...s, board: s.board.map(() => A(1)) };
     s = { ...s, board: s.board.map((c, i) => (i === 0 || i === 3 ? null : c)) }; // 0=정답칸, 3=일반칸
-    const r = applyGenerate(s, puzzle, gen('A'), T0);
+    const r = applyGenerate(s, puzzle, gen, T0);
     expect(r.ok && r.placedAt).toBe(3);
   });
 
   it('정답 칸밖에 빈 칸이 없으면 정답 칸도 사용', () => {
     let s = empty();
     s = { ...s, board: s.board.map((_, i) => (i === 0 ? null : A(1))) };
-    const r = applyGenerate(s, puzzle, gen('A'), T0);
+    const r = applyGenerate(s, puzzle, gen, T0);
     expect(r.ok && r.placedAt).toBe(0);
   });
 
   it('AP가 부족하면 실패, 빈 칸이 없어도 실패', () => {
-    expect(applyGenerate({ ...empty(), ap: 0 }, puzzle, gen('A'), T0)).toEqual({ ok: false, reason: 'no-ap' });
+    expect(applyGenerate({ ...empty(), ap: 0 }, puzzle, gen, T0)).toEqual({ ok: false, reason: 'no-ap' });
     const full = { ...empty(), board: empty().board.map(() => A(1)) };
-    expect(applyGenerate(full, puzzle, gen('A'), T0)).toEqual({ ok: false, reason: 'no-space' });
+    expect(applyGenerate(full, puzzle, gen, T0)).toEqual({ ok: false, reason: 'no-space' });
   });
 
   it('더블클릭 생성 규칙은 꺼져 있다 (생성은 생성기 버튼으로만)', () => {
@@ -155,7 +196,7 @@ describe('알파벳 체인 (A~Z 한 줄)', () => {
   });
 
   it('생성기 글자는 모두 체인 안에 있다', () => {
-    for (const g of GENERATORS) expect(itemForLetter(g.letter)).not.toBeNull();
+    for (const g of GENERATORS) for (const l of generatorLetters(g)) expect(itemForLetter(l)).not.toBeNull();
     expect(itemForLetter('H')).toEqual({ chain: 'A', level: 7 });
     expect(itemForLetter('1')).toBeNull();
   });

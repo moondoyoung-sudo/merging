@@ -19,18 +19,25 @@ export const CHAINS: Record<ChainId, readonly string[]> = {
 export const CHAIN_IDS = Object.keys(CHAINS) as ChainId[];
 
 /**
- * 생성기 버튼: 누르면 해당 글자 1개가 판에 나옴 (AP cost 소모).
- * letter를 바꾸거나 추가/삭제하면 버튼이 그대로 따라 바뀝니다.
+ * 생성기 버튼: 누르면 from~to 구간의 글자 1개가 무작위로 나옴 (AP cost 소모).
+ * 구간의 첫 글자가 가장 잘 나오고 뒤로 갈수록 확률이 decay 배씩 줄어요.
+ *   예) decay 0.4, W~Z → W 약 62% · X 25% · Y 10% · Z 4%
+ * decay가 작을수록 앞글자 쏠림이 심하고(0.2면 뒷글자는 거의 안 나옴), 클수록(0.7이면) 고르게 나와요.
+ * 구간/개수/비용을 바꾸면 버튼이 그대로 따라 바뀝니다. (구간은 서로 겹쳐도 되고 빠지는 글자가 있어도 돼요)
  */
 export interface GeneratorDef {
-  letter: string;
+  from: string;
+  to: string;
   cost: number;
+  decay: number;
 }
+export const GENERATOR_DECAY = 0.4;
 export const GENERATORS: readonly GeneratorDef[] = [
-  { letter: 'A', cost: 1 },
-  { letter: 'H', cost: 1 },
-  { letter: 'L', cost: 1 },
-  { letter: 'W', cost: 1 },
+  { from: 'A', to: 'G', cost: 1, decay: GENERATOR_DECAY },
+  { from: 'H', to: 'K', cost: 1, decay: GENERATOR_DECAY },
+  { from: 'L', to: 'P', cost: 1, decay: GENERATOR_DECAY },
+  { from: 'Q', to: 'V', cost: 1, decay: GENERATOR_DECAY },
+  { from: 'W', to: 'Z', cost: 1, decay: GENERATOR_DECAY },
 ];
 
 /**
