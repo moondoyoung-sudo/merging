@@ -9,7 +9,8 @@ import { Tile } from './Tile';
 interface Props {
   puzzle: Puzzle;
   board: BoardType;
-  locked: boolean[];
+  /** 이미 맞춘 칸 (홀로그램 바닥, 블록 없음) */
+  solved: boolean[];
   fx: Record<number, Fx>;
   highlight: ReadonlySet<number>;
   onMove: (from: number, to: number) => void;
@@ -21,8 +22,6 @@ interface Drag {
   startX: number;
   startY: number;
   moved: boolean;
-  canDrag: boolean; // 고정된 글자는 드래그 불가 (더블탭 생성만 가능)
-  tapOk: boolean;
   size: number;
 }
 interface Ghost {
@@ -41,7 +40,7 @@ function cellIndexAt(x: number, y: number): number {
   return cell ? Number(cell.dataset.index) : -1;
 }
 
-export function Board({ puzzle, board, locked, fx, highlight, onMove, onActivate }: Props) {
+export function Board({ puzzle, board, solved, fx, highlight, onMove, onActivate }: Props) {
   const boardRef = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
   const lastTap = useRef({ index: -1, time: 0 });
@@ -60,8 +59,6 @@ export function Board({ puzzle, board, locked, fx, highlight, onMove, onActivate
       startX: e.clientX,
       startY: e.clientY,
       moved: false,
-      canDrag: !locked[index],
-      tapOk: true,
       size: cell.getBoundingClientRect().width - 6,
     };
     boardRef.current?.setPointerCapture(e.pointerId);
@@ -71,10 +68,6 @@ export function Board({ puzzle, board, locked, fx, highlight, onMove, onActivate
     const d = drag.current;
     if (!d) return;
     const far = Math.hypot(e.clientX - d.startX, e.clientY - d.startY) > DRAG_THRESHOLD;
-    if (!d.canDrag) {
-      if (far) d.tapOk = false;
-      return;
-    }
     if (!d.moved && far) {
       d.moved = true;
       setDragFrom(d.from);
@@ -101,7 +94,6 @@ export function Board({ puzzle, board, locked, fx, highlight, onMove, onActivate
       if (target >= 0) onMove(d.from, target);
       return;
     }
-    if (!d.tapOk) return;
     // 터치/마우스 공용 더블탭 감지
     const t = Date.now();
     if (lastTap.current.index === d.from && t - lastTap.current.time < DOUBLE_TAP_MS) {
@@ -129,6 +121,7 @@ export function Board({ puzzle, board, locked, fx, highlight, onMove, onActivate
         const cls = [
           'cell',
           puzzle.answers[i] !== null && 'ans',
+          solved[i] && 'solved',
           highlight.has(i) && 'hl',
           hover === i && 'over',
         ]
@@ -137,13 +130,17 @@ export function Board({ puzzle, board, locked, fx, highlight, onMove, onActivate
         return (
           <div key={i} className={cls} data-index={i}>
             {number !== null && <span className="num">{number}</span>}
+            {solved[i] && (
+              <span key={effect ? `fx-${effect.id}` : 'static'} className={`holo-letter${effect ? ' pop' : ''}`}>
+                {puzzle.answers[i]}
+              </span>
+            )}
             {item && (
               <Tile
                 key={effect ? `fx-${effect.id}` : 'static'}
                 item={item}
-                fx={effect?.kind}
+                fx={effect && effect.kind !== 'lock' ? effect.kind : undefined}
                 dimmed={dragFrom === i}
-                locked={locked[i]}
               />
             )}
           </div>

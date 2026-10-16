@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { spendAp } from './ap';
 import { CHAINS, CHAIN_IDS, COLS, GENERATORS, ROWS, SPAWN_RULES } from './config';
-import { generatorLabel, generatorLetters, generatorProbabilities, rollGeneratorLetter } from './generators';
+import {
+  generatorLabel,
+  generatorLetters,
+  generatorProbabilities,
+  rollGeneratorLetter,
+} from './generators';
 import { compilePuzzle } from './puzzle';
 import { mulberry32 } from './random';
 import {
@@ -9,14 +13,16 @@ import {
   applyGenerate,
   applySpawn,
   completedWordIds,
-  getSpawnDrops,
-  itemForLetter,
-  isLockedAt,
-  isSolved,
-  sanitizeState,
   createInitialState,
+  emptySolved,
+  getSpawnDrops,
+  isSolved,
+  itemForLetter,
   labelOf,
+  sanitizeState,
+  settle,
 } from './rules';
+import { getPuzzle } from './stages';
 import type { GameState, Item } from './types';
 
 /*  0 1 2      C A B
@@ -35,7 +41,7 @@ const empty = (): GameState => ({
   stage: 1,
   seed: 1,
   board: Array(COLS * ROWS).fill(null),
-  apUsed: 0,
+  solved: emptySolved(),
   merges: 0,
 });
 const put = (s: GameState, i: number, item: Item): GameState => {
@@ -43,55 +49,77 @@ const put = (s: GameState, i: number, item: Item): GameState => {
   board[i] = item;
   return { ...s, board };
 };
+const withSolved = (s: GameState, ...cells: number[]): GameState => {
+  const solved = s.solved.slice();
+  for (const c of cells) solved[c] = true;
+  return { ...s, solved };
+};
 
-describe('고정(정답) 규칙', () => {
-  it('정답 글자가 정답 칸에 있으면 고정, 틀린 글자는 고정 안 됨', () => {
-    expect(isLockedAt(puzzle, put(empty(), 1, A(0)).board, 1)).toBe(true); // 칸1 정답 A
-    expect(isLockedAt(puzzle, put(empty(), 1, A(1)).board, 1)).toBe(false); // B는 오답
-    expect(isLockedAt(puzzle, put(empty(), 50, A(0)).board, 50)).toBe(false); // 정답 칸 아님
-  });
-
-  it('고정된 글자는 옮길 수 없고, 고정된 칸에는 놓을 수 없다', () => {
-    const s = put(put(empty(), 1, A(0)), 30, A(1));
-    expect(applyDrop(s, puzzle, 1, 40).result).toBe('noop'); // 고정 글자 이동 불가
-    expect(applyDrop(s, puzzle, 30, 1).result).toBe('blocked'); // 고정 칸에 놓기 불가
-    expect(applyDrop(s, puzzle, 30, 1).state).toBe(s);
-  });
-
-  it('이동해서 정답 칸에 맞는 글자가 들어가면 고정된다', () => {
+describe('정답 맞추기: 블록이 사라지고 칸이 맞춤 처리됨', () => {
+  it('정답 글자를 정답 칸에 놓으면 블록은 사라지고 그 칸이 맞춤(solved)이 된다', () => {
     const s = put(empty(), 30, A(2)); // C
     const r = applyDrop(s, puzzle, 30, 0); // 칸0 정답 C
     expect(r.result).toBe('moved');
-    expect(isLockedAt(puzzle, r.state.board, 0)).toBe(true);
+    expect(r.state.board[0]).toBeNull(); // 블록 제거
+    expect(r.state.board[30]).toBeNull();
+    expect(r.state.solved[0]).toBe(true);
   });
 
-  it('머지 결과가 정답이면 고정된다', () => {
-    let s = put(empty(), 2, A(0)); // 칸2 정답은 B인데 A가 있음 (오답, 이동 가능)
+  it('틀린 글자는 블록이 그대로 남고, 맞춤 처리도 안 되며, 계속 움직일 수 있다', () => {
+    const s = put(empty(), 30, A(0)); // A를 칸2(정답 B)에
+    const r = applyDrop(s, puzzle, 30, 2);
+    expect(r.state.board[2]).toEqual(A(0));
+    expect(r.state.solved[2]).toBe(false);
+    expect(applyDrop(r.state, puzzle, 2, 40).result).toBe('moved');
+  });
+
+  it('머지 결과가 정답이면 블록이 사라지고 맞춤 처리된다', () => {
+    let s = put(empty(), 2, A(0)); // 칸2 정답은 B인데 A가 있음
     s = put(s, 30, A(0));
     const r = applyDrop(s, puzzle, 30, 2); // A+A=B
     expect(r.result).toBe('merged');
-    expect(labelOf(r.state.board[2]!)).toBe('B');
-    expect(isLockedAt(puzzle, r.state.board, 2)).toBe(true);
+    expect(r.state.merges).toBe(1);
+    expect(r.state.board[2]).toBeNull();
+    expect(r.state.solved[2]).toBe(true);
   });
 
-  it('오답 글자는 정답 칸에서도 자유롭게 움직인다', () => {
-    const s = put(empty(), 2, A(0));
-    expect(applyDrop(s, puzzle, 2, 40).result).toBe('moved');
+  it('다른 블록과 자리를 바꾸다가 정답 칸에 맞는 글자가 들어가도 맞춤 처리된다', () => {
+    let s = put(empty(), 0, A(3)); // 칸0(정답 C)에 D가 있음
+    s = put(s, 30, A(2)); // C
+    const r = applyDrop(s, puzzle, 30, 0); // 교환 → C가 칸0으로
+    expect(r.result).toBe('swapped');
+    expect(r.state.solved[0]).toBe(true);
+    expect(r.state.board[0]).toBeNull();
+    expect(r.state.board[30]).toEqual(A(3)); // D는 원래 C 자리로
   });
 
-  it('모든 정답 칸이 고정되면 퍼즐 클리어, 단어별 완성도 계산', () => {
-    let s = empty();
-    s = put(s, 0, A(2)); // C
-    s = put(s, 1, A(0)); // A
-    s = put(s, 2, A(1)); // B
-    expect(completedWordIds(puzzle, s.board)).toEqual(['1-across']);
-    expect(isSolved(puzzle, s.board)).toBe(false);
-    s = put(s, 11, A(3)); // D
-    expect(isSolved(puzzle, s.board)).toBe(true);
+  it('이미 맞춘 칸에는 블록을 놓을 수 없다', () => {
+    const s = withSolved(put(empty(), 30, A(1)), 1);
+    const r = applyDrop(s, puzzle, 30, 1);
+    expect(r.result).toBe('blocked');
+    expect(r.state).toBe(s);
+  });
+
+  it('settle: 정답 칸에 정답 글자가 놓여 있으면 소모, 바뀐 게 없으면 같은 상태 객체', () => {
+    const s = put(put(empty(), 1, A(0)), 2, A(0)); // 칸1 정답 A(맞음) / 칸2 정답 B(틀림)
+    const t = settle(s, puzzle);
+    expect(t.solved[1]).toBe(true);
+    expect(t.board[1]).toBeNull();
+    expect(t.board[2]).toEqual(A(0));
+    expect(settle(t, puzzle)).toBe(t);
+  });
+
+  it('모든 정답 칸을 맞추면 퍼즐 클리어, 단어별 완성도 계산', () => {
+    let s = withSolved(empty(), 0, 1, 2);
+    expect(completedWordIds(puzzle, s.solved)).toEqual(['1-across']);
+    expect(isSolved(puzzle, s.solved)).toBe(false);
+    s = withSolved(s, 11);
+    expect(completedWordIds(puzzle, s.solved).sort()).toEqual(['1-across', '2-down']);
+    expect(isSolved(puzzle, s.solved)).toBe(true);
   });
 });
 
-describe('생성기 버튼 (구간 + 확률)', () => {
+describe('생성기 버튼 (구간 + 확률, 횟수 제한 없음)', () => {
   const gen = GENERATORS[0]!; // A~G
   const range = (g: (typeof GENERATORS)[number]) => generatorLetters(g).join('');
 
@@ -119,7 +147,7 @@ describe('생성기 버튼 (구간 + 확률)', () => {
     expect(count.W!).toBeGreaterThan(count.X!);
     expect(count.X!).toBeGreaterThan(count.Y!);
     expect(count.Y!).toBeGreaterThan(count.Z!);
-    expect(count.Z!).toBeGreaterThan(0); // 아주 가끔은 나옴
+    expect(count.Z!).toBeGreaterThan(0);
     expect(count.Z! / N).toBeLessThan(0.06);
     expect(count.W! / N).toBeGreaterThan(0.55);
   });
@@ -133,15 +161,12 @@ describe('생성기 버튼 (구간 + 확률)', () => {
     }
   });
 
-  it('누르면 구간 안의 글자 1개가 나오고 AP가 소모·누적된다', () => {
+  it('누르면 구간 안의 글자 1개가 나온다', () => {
     const rng = mulberry32(7);
     for (const g of GENERATORS) {
       const r = applyGenerate(empty(), puzzle, g, rng);
       expect(r.ok).toBe(true);
-      if (r.ok) {
-        expect(generatorLetters(g)).toContain(labelOf(r.state.board[r.placedAt]!));
-        expect(r.state.apUsed).toBe(g.cost); // 총 사용량에 누적
-      }
+      if (r.ok) expect(generatorLetters(g)).toContain(labelOf(r.state.board[r.placedAt]!));
     }
   });
 
@@ -160,15 +185,22 @@ describe('생성기 버튼 (구간 + 확률)', () => {
     expect(r.ok && r.placedAt).toBe(0);
   });
 
-  it('AP 제한이 없어서 몇 번이든 생성할 수 있고, 빈 칸이 없을 때만 실패', () => {
+  it('이미 맞춘 칸에는 생성되지 않는다 (맞춘 칸만 비어 있으면 빈 칸 없음으로 처리)', () => {
+    let s = empty();
+    s = { ...s, board: s.board.map(() => A(1)) };
+    s = { ...s, board: s.board.map((c, i) => (i === 1 ? null : c)) };
+    s = withSolved(s, 1);
+    expect(applyGenerate(s, puzzle, gen)).toEqual({ ok: false, reason: 'no-space' });
+  });
+
+  it('횟수 제한이 없어서 몇 번이든 생성할 수 있고, 빈 칸이 없을 때만 실패', () => {
     let s = empty();
     for (let i = 0; i < 60; i++) {
       const r = applyGenerate(s, puzzle, gen, mulberry32(i + 1));
       expect(r.ok).toBe(true);
       if (r.ok) s = r.state;
     }
-    expect(s.apUsed).toBe(60);
-    expect(s.board.filter(Boolean)).toHaveLength(60);
+    expect(s.board.filter(Boolean).length + s.solved.filter(Boolean).length).toBe(60);
     const full = { ...empty(), board: empty().board.map(() => A(1)) };
     expect(applyGenerate(full, puzzle, gen)).toEqual({ ok: false, reason: 'no-space' });
   });
@@ -204,31 +236,43 @@ describe('알파벳 체인 (A~Z 한 줄)', () => {
   });
 });
 
-describe('AP 총 사용량 (충전/제한 없음)', () => {
-  it('쓸 때마다 누적되기만 한다', () => {
-    let s: GameState = empty();
-    s = spendAp(s, 3);
-    s = spendAp(s, 2);
-    expect(s.apUsed).toBe(5);
-  });
-  it('게임 상태에는 AP 잔량/충전 시각이 없다', () => {
-    const s = createInitialState();
-    expect('ap' in s).toBe(false);
-    expect('apUpdatedAt' in s).toBe(false);
-  });
-});
-
 describe('저장 데이터 검증', () => {
   it('정상 데이터는 통과, 깨진 데이터는 null', () => {
     expect(sanitizeState(createInitialState())).not.toBeNull();
-    expect(sanitizeState(createInitialState())?.apUsed).toBe(0);
-    // 예전 저장 데이터(ap, apUpdatedAt 포함)도 읽히고, 그 값은 버려진다
-    const old = sanitizeState({ ...createInitialState(), ap: 5, apUpdatedAt: 123 });
-    expect(old).not.toBeNull();
-    expect(old && 'ap' in old).toBe(false);
     expect(sanitizeState({ ...empty(), stage: 99 })).toBeNull();
     const bad = empty();
     bad.board[0] = { chain: 'A', level: 99 };
     expect(sanitizeState(bad)).toBeNull();
+  });
+
+  it('게임 상태에는 AP 관련 값이 없고, 예전 저장 데이터의 AP 값은 버려진다', () => {
+    const s = createInitialState();
+    expect('ap' in s || 'apUsed' in s || 'apUpdatedAt' in s).toBe(false);
+    const old = sanitizeState({ ...s, ap: 5, apUpdatedAt: 123, apUsed: 9 });
+    expect(old).not.toBeNull();
+    expect(old && ('ap' in old || 'apUsed' in old)).toBe(false);
+  });
+
+  it('맞춘 칸 정보(solved)가 저장/복원되고, 정답 칸이 아닌 곳은 무시된다', () => {
+    const p = getPuzzle(1, 5);
+    const cell = p.answerCells[0]!;
+    const notAnswer = p.answers.findIndex((a) => a === null);
+    const solved = emptySolved();
+    solved[cell] = true;
+    solved[notAnswer] = true;
+    const r = sanitizeState({ ...empty(), seed: 5, solved })!;
+    expect(r.solved[cell]).toBe(true);
+    expect(r.solved[notAnswer]).toBe(false);
+  });
+
+  it('예전 방식 저장(정답 칸에 고정된 블록)도 불러올 때 블록 제거 + 맞춤 처리로 바뀐다', () => {
+    const p = getPuzzle(1, 5);
+    const cell = p.answerCells[0]!;
+    const board = Array(COLS * ROWS).fill(null);
+    board[cell] = itemForLetter(p.answers[cell]!)!;
+    const r = sanitizeState({ stage: 1, seed: 5, board, merges: 3, ap: 40, apUpdatedAt: 1 })!;
+    expect(r.board[cell]).toBeNull();
+    expect(r.solved[cell]).toBe(true);
+    expect(r.merges).toBe(3);
   });
 });

@@ -15,9 +15,10 @@ export interface GameState {
   stage: number;
   /** 이번 플레이(런)의 시드. (시드, 스테이지)로 퍼즐이 결정됨 → 저장/멀티플레이 때 시드만 공유하면 같은 퍼즐 */
   seed: number;
+  /** 머지 판 위의 글자 블록들. 정답 칸에 맞는 글자가 놓이면 블록은 사라져요 */
   board: Board;
-  /** AP 총 사용량 (생성기를 쓸 때마다 누적). AP 충전/제한은 없음 */
-  apUsed: number;
+  /** 칸별로 "이미 맞춘 칸"인지. 맞춘 칸은 블록 없이 홀로그램 바닥으로 표시되고, 블록을 놓을 수 없음 */
+  solved: boolean[];
   merges: number;
 }
 

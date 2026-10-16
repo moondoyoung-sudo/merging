@@ -32,12 +32,12 @@ body {
 }
 .app.loading { color: var(--muted); justify-content: center; align-items: center; }
 
-/* AP 총 사용량 */
-.ap-total {
-  flex: none; display: flex; justify-content: space-between; align-items: baseline;
-  background: var(--ink); color: #b8c8c6; border-radius: 12px; padding: 6px 14px; font-size: 13px;
-}
-.ap-total b { color: var(--ap); font-family: 'Black Han Sans', sans-serif; font-weight: 400; font-size: 18px; }
+/* 맨 위 글자 순서표 (항상 열려 있음) */
+.letter-strip { flex: none; background: #fff; border-radius: 12px; padding: 7px 8px 8px; box-shadow: 0 1px 0 #c9d4cd; }
+.strip-title { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 5px; }
+.strip-title small { font-weight: 400; color: var(--muted); font-size: 11.5px; margin-left: 4px; }
+.strip-chips { display: grid; grid-template-columns: repeat(13, 1fr); gap: 3px; }
+.strip-chips .chip { min-width: 0; padding: 3px 0; font-size: clamp(11px, 3.4vw, 15px); border-radius: 5px; }
 
 /* 생성기 버튼 5개 */
 .gens { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; flex: none; }
@@ -52,13 +52,34 @@ body {
 
 /* 판 (10×10) */
 .board {
-  flex: none; width: min(100%, max(240px, calc(100dvh - 330px))); margin-inline: auto;
+  flex: none; width: min(100%, max(240px, calc(100dvh - 395px))); margin-inline: auto;
   aspect-ratio: 1; display: grid; grid-template-rows: repeat(10, 1fr);
   gap: 3px; padding: 5px; background: var(--board); border-radius: 14px;
   touch-action: none; position: relative;
 }
 .cell { background: var(--cell); border-radius: 6px; position: relative; min-width: 0; min-height: 0; }
 .cell.ans { background: var(--paper); box-shadow: inset 0 0 0 1px #c7d1bf; }
+.cell.solved {
+  box-shadow: inset 0 0 0 1px #ffffffcc, inset 0 0 10px #ffffff99;
+  background:
+    linear-gradient(115deg, #7ef9ff 0%, #b5a0ff 22%, #ff9be3 44%, #fff59d 66%, #8dffc3 84%, #7ef9ff 100%);
+  background-size: 300% 300%;
+  animation: holo-shift 5s linear infinite;
+}
+.cell.solved::after { /* 반짝이는 빛 줄기 */
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, #ffffffaa 48%, transparent 62%);
+  background-size: 250% 100%; animation: holo-glint 3.2s ease-in-out infinite;
+}
+.holo-letter {
+  position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center;
+  font-family: 'Black Han Sans', sans-serif; font-size: min(5.2vw, 24px); color: #14323f;
+  text-shadow: 0 0 6px #ffffffee, 0 1px 0 #ffffffaa; pointer-events: none;
+}
+.holo-letter.pop { animation: holo-pop 0.55s ease-out; }
+@keyframes holo-shift { 0% { background-position: 0% 50%; } 100% { background-position: 300% 50%; } }
+@keyframes holo-glint { 0%, 55% { background-position: 150% 0; } 100% { background-position: -50% 0; } }
+@keyframes holo-pop { 0% { transform: scale(0.3); opacity: 0; } 55% { transform: scale(1.35); opacity: 1; } 100% { transform: scale(1); } }
 .cell.hl { outline: 2px solid var(--ap); outline-offset: -1px; z-index: 1; }
 .cell.over { outline: 2px solid #ffffffaa; outline-offset: -1px; }
 .num {
@@ -77,25 +98,14 @@ body {
   background: hsl(var(--hue) 60% 42%);
 }
 .tile.src { opacity: 0.25; }
-.tile.locked {
-  cursor: default;
-  box-shadow: inset 0 0 0 2px #ffffffee, inset 0 -3px 0 rgba(0, 0, 0, 0.25);
-}
 .tile .dot {
   position: absolute; right: 2px; top: 2px; width: 6px; height: 6px;
   border-radius: 50%; background: var(--red); box-shadow: 0 0 0 1.2px #fff;
 }
-.tile .ck { position: absolute; right: 3px; bottom: 0; font-size: 9px; line-height: 1.2; font-family: system-ui, sans-serif; }
 .tile.pop { animation: pop 0.28s ease-out; }
 .tile.spawn { animation: spawn 0.3s ease-out; }
-.tile.lock { animation: lockin 0.5s ease-out; }
 @keyframes pop { 0% { transform: scale(0.7); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
 @keyframes spawn { 0% { transform: scale(0.2); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
-@keyframes lockin {
-  0% { transform: scale(1.3); filter: brightness(1.7); }
-  60% { transform: scale(0.94); filter: brightness(1.2); }
-  100% { transform: scale(1); filter: none; }
-}
 
 .ghost {
   position: fixed; z-index: 50; pointer-events: none;
@@ -187,5 +197,5 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tile.pop, .tile.spawn, .tile.lock { animation: none; }
+  .tile.pop, .tile.spawn, .holo-letter.pop, .cell.solved, .cell.solved::after { animation: none; }
 }

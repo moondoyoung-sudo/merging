@@ -1,4 +1,3 @@
-import { spendAp } from './ap';
 import { rollGeneratorLetter } from './generators';
 import {
   BASE_ITEM,
@@ -7,7 +6,6 @@ import {
   COLS,
   CONSUME_SOURCE,
   ROWS,
-  SPAWN_COST,
   SPAWN_RULES,
   STAGE_COUNT,
   START_ITEMS,
@@ -36,21 +34,31 @@ export function getSpawnDrops(item: Item): readonly Item[] | null {
 }
 
 /* ---------- 퍼즐 판정 ----------
- * "고정"은 따로 저장하지 않고 판 상태에서 계산합니다:
- * 정답 칸에 그 칸의 정답 글자가 놓여 있으면 고정(이동·머지 불가). */
-export function isLockedAt(puzzle: Puzzle, board: Board, i: number): boolean {
-  const item = board[i];
-  const answer = puzzle.answers[i];
-  return !!item && !!answer && labelOf(item) === answer;
+ * 정답 칸에 그 칸의 정답 글자가 놓이면 블록은 사라지고(소모), 칸은 "맞춤(solved)"이 돼요.
+ * 맞춘 칸은 홀로그램 바닥으로 표시되고, 블록을 놓을 수 없어요. */
+export const emptySolved = (): boolean[] => Array<boolean>(COLS * ROWS).fill(false);
+
+/** 정답 칸에 정답 글자 블록이 있으면 블록을 없애고 맞춤 처리. 바뀐 게 없으면 같은 객체를 돌려줌 */
+export function settle(state: GameState, puzzle: Puzzle): GameState {
+  let board = state.board;
+  let solved = state.solved;
+  for (const i of puzzle.answerCells) {
+    const item = board[i];
+    if (!solved[i] && item && labelOf(item) === puzzle.answers[i]) {
+      if (board === state.board) board = board.slice();
+      if (solved === state.solved) solved = solved.slice();
+      board[i] = null;
+      solved[i] = true;
+    }
+  }
+  return board === state.board ? state : { ...state, board, solved };
 }
-export const lockedMask = (puzzle: Puzzle, board: Board): boolean[] =>
-  board.map((_, i) => isLockedAt(puzzle, board, i));
 
-export const isSolved = (puzzle: Puzzle, board: Board): boolean =>
-  puzzle.answerCells.every((i) => isLockedAt(puzzle, board, i));
+export const isSolved = (puzzle: Puzzle, solved: readonly boolean[]): boolean =>
+  puzzle.answerCells.every((i) => solved[i]);
 
-export const completedWordIds = (puzzle: Puzzle, board: Board): string[] =>
-  puzzle.words.filter((w) => w.cells.every((i) => isLockedAt(puzzle, board, i))).map((w) => w.id);
+export const completedWordIds = (puzzle: Puzzle, solved: readonly boolean[]): string[] =>
+  puzzle.words.filter((w) => w.cells.every((i) => solved[i])).map((w) => w.id);
 
 /* ---------- 초기 상태 / 검증 ---------- */
 export function createBoard(puzzle: Puzzle, rng: Rng = Math.random): Board {
@@ -69,24 +77,31 @@ export function createInitialState(rng: Rng = Math.random): GameState {
     stage: 1,
     seed,
     board: createBoard(getPuzzle(1, seed), rng),
-    apUsed: 0,
+    solved: emptySolved(),
     merges: 0,
   };
 }
 
 /** 해당 스테이지를 '새 판'(시작 글자만 있는 상태)으로 시작. '다시' 버튼에서 사용 */
 export function startStage(state: GameState, stage: number, rng: Rng = Math.random): GameState {
-  return { ...state, stage, board: createBoard(getPuzzle(stage, state.seed), rng) };
+  return {
+    ...state,
+    stage,
+    board: createBoard(getPuzzle(stage, state.seed), rng),
+    solved: emptySolved(),
+  };
 }
 
 /**
- * 다음 스테이지. 판은 초기화하지 않고 지금까지 만든 글자를 그대로 이어가요.
- * (새 퍼즐의 정답 칸에 맞는 글자가 이미 놓여 있으면 자동으로 고정됨)
+ * 다음 스테이지. 판 위에 남은 글자는 초기화하지 않고 그대로 이어가요.
+ * (맞춘 단어에 쓰인 블록은 이미 사라졌고, 새 퍼즐의 정답 칸에 맞는 글자가 이미 놓여 있으면 바로 맞춤 처리)
  * 마지막 스테이지를 깼다면 새 시드로 스테이지 1부터 다시 시작하고, 이때도 판의 글자는 유지.
  */
 export function advanceStage(state: GameState, rng: Rng = Math.random): GameState {
-  if (state.stage >= STAGE_COUNT) return { ...state, stage: 1, seed: newSeed(rng) };
-  return { ...state, stage: state.stage + 1 };
+  const wrapped = state.stage >= STAGE_COUNT;
+  const stage = wrapped ? 1 : state.stage + 1;
+  const seed = wrapped ? newSeed(rng) : state.seed;
+  return settle({ ...state, stage, seed, solved: emptySolved() }, getPuzzle(stage, seed));
 }
 
 function shuffle<T>(arr: T[], rng: Rng): T[] {
@@ -125,25 +140,29 @@ export function sanitizeState(raw: unknown): GameState | null {
     }
     board.push({ chain: it.chain as ChainId, level: it.level });
   }
-  return {
-    stage: s.stage,
-    seed: s.seed,
-    board,
-    apUsed: typeof s.apUsed === 'number' && s.apUsed > 0 ? Math.floor(s.apUsed) : 0,
-    merges: typeof s.merges === 'number' ? s.merges : 0,
-  };
+  const puzzle = getPuzzle(s.stage, s.seed);
+  const solved =
+    Array.isArray(s.solved) && s.solved.length === COLS * ROWS
+      ? (s.solved as unknown[]).map((v, i) => v === true && puzzle.answers[i] !== null)
+      : emptySolved();
+  // 예전 저장 데이터(정답 칸에 고정된 블록)도 새 방식(블록 제거 + 맞춤 표시)으로 바꿔서 불러옴
+  return settle(
+    { stage: s.stage, seed: s.seed, board, solved, merges: typeof s.merges === 'number' ? s.merges : 0 },
+    puzzle,
+  );
 }
 
 /* ---------- 보드 조작 ---------- */
 /**
  * index에서 맨해튼 거리가 가장 가까운 빈 칸 (동거리면 무작위). 없으면 -1.
- * avoid(i)가 true인 칸(=정답 칸)은 다른 빈 칸이 없을 때만 사용.
+ * avoid(i)가 true인 칸(=정답 칸)은 다른 빈 칸이 없을 때만 사용, forbid(i)가 true인 칸(=맞춘 칸)은 절대 사용 안 함.
  */
 export function findEmptyNear(
   board: Board,
   index: number,
   rng: Rng = Math.random,
   avoid?: (i: number) => boolean,
+  forbid?: (i: number) => boolean,
 ): number {
   const r0 = Math.floor(index / COLS);
   const c0 = index % COLS;
@@ -151,7 +170,7 @@ export function findEmptyNear(
     let best = -1;
     let bestScore = Infinity;
     board.forEach((cell, j) => {
-      if (cell || (skipAvoided && avoid?.(j))) return;
+      if (cell || forbid?.(j) || (skipAvoided && avoid?.(j))) return;
       const score = Math.abs(Math.floor(j / COLS) - r0) + Math.abs((j % COLS) - c0) + rng() * 0.5;
       if (score < bestScore) {
         bestScore = score;
@@ -166,7 +185,7 @@ export function findEmptyNear(
 
 export type DropResult = 'noop' | 'moved' | 'merged' | 'swapped' | 'maxed' | 'blocked';
 
-/** from 아이템을 to 칸에 놓았을 때의 결과 (이동 / 머지 / 교환). 고정된 칸은 건드릴 수 없음. */
+/** from 아이템을 to 칸에 놓았을 때의 결과 (이동 / 머지 / 교환). 맞춘 칸에는 놓을 수 없음. 정답이 되면 블록은 사라짐 */
 export function applyDrop(
   state: GameState,
   puzzle: Puzzle,
@@ -175,24 +194,24 @@ export function applyDrop(
 ): { state: GameState; result: DropResult } {
   const a = state.board[from];
   const b = state.board[to];
-  if (from === to || !a || isLockedAt(puzzle, state.board, from)) return { state, result: 'noop' };
-  if (isLockedAt(puzzle, state.board, to)) return { state, result: 'blocked' };
+  if (from === to || !a) return { state, result: 'noop' };
+  if (state.solved[to]) return { state, result: 'blocked' };
 
   const board = state.board.slice();
 
   if (!b) {
     board[to] = a;
     board[from] = null;
-    return { state: { ...state, board }, result: 'moved' };
+    return { state: settle({ ...state, board }, puzzle), result: 'moved' };
   }
   if (isSameItem(a, b) && !isMaxLevel(a)) {
     board[from] = null;
     board[to] = { chain: a.chain, level: a.level + 1 };
-    return { state: { ...state, board, merges: state.merges + 1 }, result: 'merged' };
+    return { state: settle({ ...state, board, merges: state.merges + 1 }, puzzle), result: 'merged' };
   }
   board[from] = b;
   board[to] = a;
-  return { state: { ...state, board }, result: isSameItem(a, b) ? 'maxed' : 'swapped' };
+  return { state: settle({ ...state, board }, puzzle), result: isSameItem(a, b) ? 'maxed' : 'swapped' };
 }
 
 /* ---------- 생성 액션 ---------- */
@@ -210,7 +229,7 @@ export function itemForLetter(letter: string): Item | null {
   return null;
 }
 
-/** 생성기 버튼: 구간 안에서 확률대로 뽑은 글자 1개를 판에 생성 (AP 총 사용량에 누적) */
+/** 생성기 버튼: 구간 안에서 확률대로 뽑은 글자 1개를 판에 생성 (횟수 제한 없음) */
 export function applyGenerate(
   state: GameState,
   puzzle: Puzzle,
@@ -218,17 +237,17 @@ export function applyGenerate(
   rng: Rng = Math.random,
 ): ActionResult {
   const avoid = (i: number) => puzzle.answers[i] !== null;
-  const dest = findEmptyNear(state.board, Math.floor((COLS * ROWS) / 2), rng, avoid);
+  const forbid = (i: number) => state.solved[i] === true;
+  const dest = findEmptyNear(state.board, Math.floor((COLS * ROWS) / 2), rng, avoid, forbid);
   if (dest < 0) return { ok: false, reason: 'no-space' };
-  const paid = spendAp(state, generator.cost);
   const item = itemForLetter(rollGeneratorLetter(generator, rng));
   if (!item) return { ok: false, reason: 'not-spawnable' };
-  const board = paid.board.slice();
+  const board = state.board.slice();
   board[dest] = item;
-  return { ok: true, state: { ...paid, board }, placedAt: dest };
+  return { ok: true, state: settle({ ...state, board }, puzzle), placedAt: dest };
 }
 
-/** 더블클릭: index의 아이템에서 새 아이템 생성 (고정된 글자도 생성은 가능) */
+/** 더블클릭: index의 아이템에서 새 아이템 생성 (SPAWN_RULES가 비어 있으면 동작 안 함) */
 export function applySpawn(
   state: GameState,
   puzzle: Puzzle,
@@ -240,15 +259,13 @@ export function applySpawn(
   if (!item || !drops) return { ok: false, reason: 'not-spawnable' };
 
   const avoid = (i: number) => puzzle.answers[i] !== null;
-  const dest = findEmptyNear(state.board, index, rng, avoid);
+  const forbid = (i: number) => state.solved[i] === true;
+  const dest = findEmptyNear(state.board, index, rng, avoid, forbid);
   if (dest < 0) return { ok: false, reason: 'no-space' };
 
-  const paid = spendAp(state, SPAWN_COST);
-
   const drop = drops[Math.floor(rng() * drops.length)]!;
-  const board = paid.board.slice();
-  // 고정된 글자는 사라지면 안 되므로 CONSUME_SOURCE여도 유지
-  if (CONSUME_SOURCE && !isLockedAt(puzzle, board, index)) board[index] = null;
+  const board = state.board.slice();
+  if (CONSUME_SOURCE) board[index] = null;
   board[dest] = { ...drop };
-  return { ok: true, state: { ...paid, board }, placedAt: dest };
+  return { ok: true, state: settle({ ...state, board }, puzzle), placedAt: dest };
 }

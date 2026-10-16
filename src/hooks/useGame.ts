@@ -9,7 +9,6 @@ import {
   completedWordIds,
   createInitialState,
   isSolved,
-  lockedMask,
   startStage,
 } from '../game/rules';
 import type { GameState } from '../game/types';
@@ -59,9 +58,8 @@ export function useGame(repo: GameRepository) {
       setState(next);
       const pz = getPuzzle(next.stage, next.seed);
 
-      const before = lockedMask(pz, prev.board);
-      const after = lockedMask(pz, next.board);
-      const fresh = after.flatMap((locked, i) => (locked && !before[i] ? [i] : []));
+      // 이번 동작으로 새로 "맞춘" 칸들 (블록이 사라지고 홀로그램 바닥이 됨)
+      const fresh = next.solved.flatMap((done, i) => (done && !prev.solved[i] ? [i] : []));
 
       const effects: Record<number, Fx> = {};
       if (base) effects[base.index] = { kind: base.kind, id: ++fxId.current };
@@ -70,13 +68,12 @@ export function useGame(repo: GameRepository) {
       clearTimeout(fxTimer.current);
       fxTimer.current = setTimeout(() => setFx({}), 600);
 
-      const doneBefore = new Set(completedWordIds(pz, prev.board));
-      const newlyDone = pz.words.filter(
-        (w) => completedWordIds(pz, next.board).includes(w.id) && !doneBefore.has(w.id),
-      );
-      if (isSolved(pz, next.board)) return; // 클리어 모달이 대신 안내
+      const doneBefore = new Set(completedWordIds(pz, prev.solved));
+      const doneNow = completedWordIds(pz, next.solved);
+      const newlyDone = pz.words.filter((w) => doneNow.includes(w.id) && !doneBefore.has(w.id));
+      if (isSolved(pz, next.solved)) return; // 클리어 모달이 대신 안내
       if (newlyDone.length) showToast(`${newlyDone.map((w) => w.answer).join(', ')} 완성!`);
-      else if (fresh.length) showToast('정답! 칸에 고정됐어요');
+      else if (fresh.length) showToast('정답! 블록이 칸에 채워졌어요');
     },
     [showToast],
   );
@@ -111,7 +108,7 @@ export function useGame(repo: GameRepository) {
     (from: number, to: number) => {
       if (!state || !puzzle) return;
       const { state: next, result } = applyDrop(state, puzzle, from, to);
-      if (result === 'blocked') return showToast('고정된 칸에는 놓을 수 없어요');
+      if (result === 'blocked') return showToast('이미 맞춘 칸이에요');
       if (result === 'maxed') showToast('더 이상 합칠 수 없는 최종 글자예요');
       if (next !== state) commit(state, next, result === 'merged' ? { index: to, kind: 'pop' } : undefined);
     },
@@ -143,7 +140,7 @@ export function useGame(repo: GameRepository) {
     fx,
     toast,
     selectedWordId,
-    solved: state && puzzle ? isSolved(puzzle, state.board) : false,
+    solved: state && puzzle ? isSolved(puzzle, state.solved) : false,
     generate,
     activate,
     move,

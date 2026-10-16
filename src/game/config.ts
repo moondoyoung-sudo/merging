@@ -16,7 +16,7 @@ export const CHAINS: Record<ChainId, readonly string[]> = {
 export const CHAIN_IDS = Object.keys(CHAINS) as ChainId[];
 
 /**
- * 생성기 버튼: 누르면 from~to 구간의 글자 1개가 무작위로 나옴. cost만큼 'AP 총 사용량'에 더해져요 (AP 제한은 없음).
+ * 생성기 버튼: 누르면 from~to 구간의 글자 1개가 무작위로 나옴 (횟수 제한 없음).
  * 구간의 첫 글자가 가장 잘 나오고 뒤로 갈수록 확률이 decay 배씩 줄어요.
  *   예) decay 0.4, W~Z → W 약 62% · X 25% · Y 10% · Z 4%
  * decay가 작을수록 앞글자 쏠림이 심하고(0.2면 뒷글자는 거의 안 나옴), 클수록(0.7이면) 고르게 나와요.
@@ -25,16 +25,15 @@ export const CHAIN_IDS = Object.keys(CHAINS) as ChainId[];
 export interface GeneratorDef {
   from: string;
   to: string;
-  cost: number;
   decay: number;
 }
 export const GENERATOR_DECAY = 0.4;
 export const GENERATORS: readonly GeneratorDef[] = [
-  { from: 'A', to: 'G', cost: 1, decay: GENERATOR_DECAY },
-  { from: 'H', to: 'K', cost: 1, decay: GENERATOR_DECAY },
-  { from: 'L', to: 'P', cost: 1, decay: GENERATOR_DECAY },
-  { from: 'Q', to: 'V', cost: 1, decay: GENERATOR_DECAY },
-  { from: 'W', to: 'Z', cost: 1, decay: GENERATOR_DECAY },
+  { from: 'A', to: 'G', decay: GENERATOR_DECAY },
+  { from: 'H', to: 'K', decay: GENERATOR_DECAY },
+  { from: 'L', to: 'P', decay: GENERATOR_DECAY },
+  { from: 'Q', to: 'V', decay: GENERATOR_DECAY },
+  { from: 'W', to: 'Z', decay: GENERATOR_DECAY },
 ];
 
 /**
@@ -47,6 +46,5 @@ export interface SpawnRule {
   toLevel?: number;
   drops: readonly Item[];
 }
-export const SPAWN_COST = 1;
 export const CONSUME_SOURCE = false;
 export const SPAWN_RULES: readonly SpawnRule[] = [];
