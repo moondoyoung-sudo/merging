@@ -32,25 +32,12 @@ body {
 }
 .app.loading { color: var(--muted); justify-content: center; align-items: center; }
 
-/* HUD */
-.hud { display: flex; align-items: stretch; gap: 8px; flex: none; }
-.ap { flex: 1; background: var(--ink); color: #fff; border-radius: 14px; padding: 6px 12px 5px; min-width: 0; }
-.ap-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.ap-num { font-family: 'Black Han Sans', sans-serif; font-size: 22px; color: var(--ap); }
-.ap-num small { font-size: 13px; color: #9fb1b0; }
-.ap-used { font-size: 12px; color: #b8c8c6; white-space: nowrap; }
-.ap-used b { color: #fff; font-family: 'Black Han Sans', sans-serif; font-weight: 400; font-size: 14px; margin-left: 2px; }
-.ap-timer { font-size: 11px; color: #9fb1b0; margin-top: 3px; }
-.bar { height: 5px; border-radius: 3px; background: #3a4d50; margin-top: 4px; overflow: hidden; }
-.bar > i { display: block; height: 100%; background: var(--ap); transition: width 0.4s; }
-.refill {
-  flex: none; width: 84px; border: 0; border-radius: 14px; background: var(--ap); color: #2b1d00;
-  font-family: 'Black Han Sans', sans-serif; font-size: 16px; line-height: 1.15; cursor: pointer;
-  box-shadow: 0 4px 0 #b97a14; padding: 0 6px;
+/* AP 총 사용량 */
+.ap-total {
+  flex: none; display: flex; justify-content: space-between; align-items: baseline;
+  background: var(--ink); color: #b8c8c6; border-radius: 12px; padding: 6px 14px; font-size: 13px;
 }
-.refill:active { transform: translateY(3px); box-shadow: 0 1px 0 #b97a14; }
-.refill span { display: block; font-family: 'Gowun Dodum', sans-serif; font-size: 10px; opacity: 0.75; }
-.refill:disabled { filter: grayscale(0.7); opacity: 0.55; box-shadow: none; cursor: default; }
+.ap-total b { color: var(--ap); font-family: 'Black Han Sans', sans-serif; font-weight: 400; font-size: 18px; }
 
 /* 생성기 버튼 5개 */
 .gens { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; flex: none; }
@@ -65,7 +52,7 @@ body {
 
 /* 판 (10×10) */
 .board {
-  flex: none; width: min(100%, max(240px, calc(100dvh - 385px))); margin-inline: auto;
+  flex: none; width: min(100%, max(240px, calc(100dvh - 330px))); margin-inline: auto;
   aspect-ratio: 1; display: grid; grid-template-rows: repeat(10, 1fr);
   gap: 3px; padding: 5px; background: var(--board); border-radius: 14px;
   touch-action: none; position: relative;

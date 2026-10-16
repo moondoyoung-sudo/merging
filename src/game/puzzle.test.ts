@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CHAINS, CHAIN_IDS, COLS, ROWS, START_ITEMS, STAGE_COUNT } from './config';
 import type { Puzzle } from './puzzle';
-import { createBoard, createInitialState, advanceStage } from './rules';
+import { advanceStage, createBoard, createInitialState, isLockedAt, itemForLetter, startStage } from './rules';
 import { generateStageDef, getPuzzle, stageSpec } from './stages';
 import { WORD_BANK } from './words';
 
@@ -113,7 +113,7 @@ describe('시작 판 / 스테이지 진행', () => {
   });
 
   it('다음 스테이지로 넘어가면 같은 시드로 스테이지+1, 30에서는 새 시드로 1부터', () => {
-    let s = createInitialState(0);
+    let s = createInitialState();
     const seed = s.seed;
     s = advanceStage(s);
     expect(s).toMatchObject({ stage: 2, seed });
@@ -121,5 +121,40 @@ describe('시작 판 / 스테이지 진행', () => {
     const wrapped = advanceStage(s, () => 0.5);
     expect(wrapped.stage).toBe(1);
     expect(wrapped.seed).not.toBe(seed);
+  });
+
+  it('스테이지가 넘어가도 판의 글자(머지한 것)는 초기화되지 않고 그대로 남는다', () => {
+    let s = createInitialState();
+    const board = s.board.slice();
+    board[0] = itemForLetter('K')!; // 머지로 만든 글자라고 가정
+    board[99] = itemForLetter('Z')!;
+    s = { ...s, board, merges: 12, apUsed: 34 };
+
+    const next = advanceStage(s);
+    expect(next.board).toEqual(board); // 판 그대로
+    expect(next.merges).toBe(12);
+    expect(next.apUsed).toBe(34);
+
+    // 마지막 스테이지를 깨고 처음으로 돌아갈 때도 판은 유지
+    const wrapped = advanceStage({ ...s, stage: STAGE_COUNT }, () => 0.3);
+    expect(wrapped.stage).toBe(1);
+    expect(wrapped.board).toEqual(board);
+  });
+
+  it('이어받은 글자가 새 퍼즐의 정답 칸에 맞으면 자동으로 고정된다', () => {
+    const s = createInitialState();
+    const nextPuzzle = getPuzzle(2, s.seed);
+    const i = nextPuzzle.answerCells[0]!;
+    const board = s.board.map((c) => c);
+    board[i] = itemForLetter(nextPuzzle.answers[i]!)!;
+    const next = advanceStage({ ...s, board });
+    expect(isLockedAt(nextPuzzle, next.board, i)).toBe(true);
+  });
+
+  it("'다시'(startStage)는 판을 시작 상태로 되돌린다", () => {
+    const s = createInitialState();
+    const board = s.board.map(() => itemForLetter('Q')!);
+    const reset = startStage({ ...s, board }, 1);
+    expect(reset.board.filter(Boolean)).toHaveLength(START_ITEMS);
   });
 });

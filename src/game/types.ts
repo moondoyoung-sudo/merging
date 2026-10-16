@@ -16,9 +16,7 @@ export interface GameState {
   /** 이번 플레이(런)의 시드. (시드, 스테이지)로 퍼즐이 결정됨 → 저장/멀티플레이 때 시드만 공유하면 같은 퍼즐 */
   seed: number;
   board: Board;
-  ap: number;
-  apUpdatedAt: number;
-  /** AP 총 사용량 (누적, 충전해도 줄지 않음) */
+  /** AP 총 사용량 (생성기를 쓸 때마다 누적). AP 충전/제한은 없음 */
   apUsed: number;
   merges: number;
 }

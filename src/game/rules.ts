@@ -1,7 +1,6 @@
 import { spendAp } from './ap';
 import { rollGeneratorLetter } from './generators';
 import {
-  AP_MAX,
   BASE_ITEM,
   CHAINS,
   CHAIN_IDS,
@@ -64,31 +63,30 @@ export function createBoard(puzzle: Puzzle, rng: Rng = Math.random): Board {
 const newSeed = (rng: Rng): number => Math.floor(rng() * 0x7fffffff) + 1;
 
 /** 새 게임: 새 시드로 스테이지 1부터 */
-export function createInitialState(now: number, rng: Rng = Math.random): GameState {
+export function createInitialState(rng: Rng = Math.random): GameState {
   const seed = newSeed(rng);
   return {
     stage: 1,
     seed,
     board: createBoard(getPuzzle(1, seed), rng),
-    ap: AP_MAX,
-    apUpdatedAt: now,
     apUsed: 0,
     merges: 0,
   };
 }
 
-/** 같은 AP를 유지한 채 해당 스테이지의 새 판으로 시작 */
+/** 해당 스테이지를 '새 판'(시작 글자만 있는 상태)으로 시작. '다시' 버튼에서 사용 */
 export function startStage(state: GameState, stage: number, rng: Rng = Math.random): GameState {
   return { ...state, stage, board: createBoard(getPuzzle(stage, state.seed), rng) };
 }
 
-/** 다음 스테이지. 마지막 스테이지를 깼다면 새 시드로 처음부터 다시 */
+/**
+ * 다음 스테이지. 판은 초기화하지 않고 지금까지 만든 글자를 그대로 이어가요.
+ * (새 퍼즐의 정답 칸에 맞는 글자가 이미 놓여 있으면 자동으로 고정됨)
+ * 마지막 스테이지를 깼다면 새 시드로 스테이지 1부터 다시 시작하고, 이때도 판의 글자는 유지.
+ */
 export function advanceStage(state: GameState, rng: Rng = Math.random): GameState {
-  if (state.stage >= STAGE_COUNT) {
-    const seed = newSeed(rng);
-    return { ...state, stage: 1, seed, board: createBoard(getPuzzle(1, seed), rng) };
-  }
-  return startStage(state, state.stage + 1, rng);
+  if (state.stage >= STAGE_COUNT) return { ...state, stage: 1, seed: newSeed(rng) };
+  return { ...state, stage: state.stage + 1 };
 }
 
 function shuffle<T>(arr: T[], rng: Rng): T[] {
@@ -104,7 +102,6 @@ export function sanitizeState(raw: unknown): GameState | null {
   if (!raw || typeof raw !== 'object') return null;
   const s = raw as Partial<GameState>;
   if (!Array.isArray(s.board) || s.board.length !== COLS * ROWS) return null;
-  if (typeof s.ap !== 'number' || typeof s.apUpdatedAt !== 'number') return null;
   if (typeof s.seed !== 'number' || !Number.isFinite(s.seed)) return null;
   if (typeof s.stage !== 'number' || !Number.isInteger(s.stage) || s.stage < 1 || s.stage > STAGE_COUNT) {
     return null;
@@ -132,8 +129,6 @@ export function sanitizeState(raw: unknown): GameState | null {
     stage: s.stage,
     seed: s.seed,
     board,
-    ap: Math.min(AP_MAX, Math.max(0, Math.floor(s.ap))),
-    apUpdatedAt: s.apUpdatedAt,
     apUsed: typeof s.apUsed === 'number' && s.apUsed > 0 ? Math.floor(s.apUsed) : 0,
     merges: typeof s.merges === 'number' ? s.merges : 0,
   };
@@ -200,8 +195,8 @@ export function applyDrop(
   return { state: { ...state, board }, result: isSameItem(a, b) ? 'maxed' : 'swapped' };
 }
 
-/* ---------- AP를 쓰는 액션 ---------- */
-export type ActionFail = 'no-ap' | 'no-space' | 'not-spawnable';
+/* ---------- 생성 액션 ---------- */
+export type ActionFail = 'no-space' | 'not-spawnable';
 export type ActionResult =
   | { ok: true; state: GameState; placedAt: number }
   | { ok: false; reason: ActionFail };
@@ -215,19 +210,17 @@ export function itemForLetter(letter: string): Item | null {
   return null;
 }
 
-/** 생성기 버튼: 구간 안에서 확률대로 뽑은 글자 1개를 판에 생성 (AP cost 소모) */
+/** 생성기 버튼: 구간 안에서 확률대로 뽑은 글자 1개를 판에 생성 (AP 총 사용량에 누적) */
 export function applyGenerate(
   state: GameState,
   puzzle: Puzzle,
   generator: GeneratorDef,
-  now: number,
   rng: Rng = Math.random,
 ): ActionResult {
   const avoid = (i: number) => puzzle.answers[i] !== null;
   const dest = findEmptyNear(state.board, Math.floor((COLS * ROWS) / 2), rng, avoid);
   if (dest < 0) return { ok: false, reason: 'no-space' };
-  const paid = spendAp(state, generator.cost, now);
-  if (!paid) return { ok: false, reason: 'no-ap' };
+  const paid = spendAp(state, generator.cost);
   const item = itemForLetter(rollGeneratorLetter(generator, rng));
   if (!item) return { ok: false, reason: 'not-spawnable' };
   const board = paid.board.slice();
@@ -240,7 +233,6 @@ export function applySpawn(
   state: GameState,
   puzzle: Puzzle,
   index: number,
-  now: number,
   rng: Rng = Math.random,
 ): ActionResult {
   const item = state.board[index];
@@ -251,8 +243,7 @@ export function applySpawn(
   const dest = findEmptyNear(state.board, index, rng, avoid);
   if (dest < 0) return { ok: false, reason: 'no-space' };
 
-  const paid = spendAp(state, SPAWN_COST, now);
-  if (!paid) return { ok: false, reason: 'no-ap' };
+  const paid = spendAp(state, SPAWN_COST);
 
   const drop = drops[Math.floor(rng() * drops.length)]!;
   const board = paid.board.slice();

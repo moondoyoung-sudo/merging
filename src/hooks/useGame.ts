@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { msUntilNextAp, refillAp, regenAp } from '../game/ap';
 import type { GeneratorDef } from '../game/config';
 import { getPuzzle } from '../game/stages';
 import {
@@ -13,7 +12,6 @@ import {
   lockedMask,
   startStage,
 } from '../game/rules';
-import type { ActionFail } from '../game/rules';
 import type { GameState } from '../game/types';
 import type { GameRepository } from '../storage/repository';
 
@@ -22,14 +20,8 @@ export interface Fx {
   id: number;
 }
 
-const FAIL_MESSAGE: Record<Exclude<ActionFail, 'not-spawnable'>, string> = {
-  'no-ap': 'AP가 부족해요',
-  'no-space': '빈 칸이 없어요',
-};
-
 export function useGame(repo: GameRepository) {
   const [state, setState] = useState<GameState | null>(null);
-  const [now, setNow] = useState(() => Date.now());
   const [fx, setFx] = useState<Record<number, Fx>>({});
   const [toast, setToast] = useState<string | null>(null);
   const [selectedWordId, setSelectedWordId] = useState<string | null>(null);
@@ -44,8 +36,7 @@ export function useGame(repo: GameRepository) {
     let alive = true;
     void repo.load().then((saved) => {
       if (!alive) return;
-      const t = Date.now();
-      setState(regenAp(saved ?? createInitialState(t), t));
+      setState(saved ?? createInitialState());
     });
     return () => {
       alive = false;
@@ -55,21 +46,6 @@ export function useGame(repo: GameRepository) {
   useEffect(() => {
     if (state) void repo.save(state);
   }, [state, repo]);
-
-  /* 1초마다 시계 + AP 충전, 탭 복귀 시에도 즉시 갱신 */
-  useEffect(() => {
-    const tick = () => {
-      const t = Date.now();
-      setNow(t);
-      setState((prev) => (prev ? regenAp(prev, t) : prev));
-    };
-    const id = setInterval(tick, 1000);
-    document.addEventListener('visibilitychange', tick);
-    return () => {
-      clearInterval(id);
-      document.removeEventListener('visibilitychange', tick);
-    };
-  }, []);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -108,9 +84,9 @@ export function useGame(repo: GameRepository) {
   const generate = useCallback(
     (generator: GeneratorDef) => {
       if (!state || !puzzle) return;
-      const r = applyGenerate(state, puzzle, generator, Date.now(), Math.random);
+      const r = applyGenerate(state, puzzle, generator, Math.random);
       if (!r.ok) {
-        if (r.reason !== 'not-spawnable') showToast(FAIL_MESSAGE[r.reason]);
+        if (r.reason === 'no-space') showToast('빈 칸이 없어요');
         return;
       }
       commit(state, r.state, { index: r.placedAt, kind: 'spawn' });
@@ -118,21 +94,12 @@ export function useGame(repo: GameRepository) {
     [state, puzzle, commit, showToast],
   );
 
-  /** AP 충전 버튼: 대가 없이 100까지 */
-  const refill = useCallback(() => {
-    if (!state) return;
-    const next = refillAp(state, Date.now());
-    if (next === state) return showToast('AP가 이미 가득 차 있어요');
-    setState(next);
-    showToast('AP가 가득 찼어요');
-  }, [state, showToast]);
-
   const activate = useCallback(
     (index: number) => {
       if (!state || !puzzle) return;
-      const r = applySpawn(state, puzzle, index, Date.now(), Math.random);
+      const r = applySpawn(state, puzzle, index, Math.random);
       if (!r.ok) {
-        if (r.reason !== 'not-spawnable') showToast(FAIL_MESSAGE[r.reason]);
+        if (r.reason === 'no-space') showToast('빈 칸이 없어요');
         return;
       }
       commit(state, r.state, { index: r.placedAt, kind: 'spawn' });
@@ -151,14 +118,14 @@ export function useGame(repo: GameRepository) {
     [state, puzzle, commit, showToast],
   );
 
-  /** 현재 스테이지를 새 판으로 다시 시작 (AP는 그대로, 퍼즐은 그대로) */
+  /** 현재 스테이지를 새 판(시작 글자만 있는 상태)으로 다시 시작. 만든 글자는 사라져요 */
   const restartStage = useCallback(() => {
     if (!state) return;
     setSelectedWordId(null);
     setState(startStage(state, state.stage));
   }, [state]);
 
-  /** 다음 스테이지 (30을 깼다면 새 퍼즐로 처음부터) */
+  /** 다음 스테이지: 새 퍼즐이 만들어지고 판의 글자는 그대로 이어짐 */
   const nextStage = useCallback(() => {
     if (!state) return;
     setSelectedWordId(null);
@@ -177,9 +144,7 @@ export function useGame(repo: GameRepository) {
     toast,
     selectedWordId,
     solved: state && puzzle ? isSolved(puzzle, state.board) : false,
-    msUntilNext: state ? msUntilNextAp(state, now) : null,
     generate,
-    refill,
     activate,
     move,
     restartStage,

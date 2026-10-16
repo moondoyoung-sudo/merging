@@ -4,9 +4,6 @@ import type { ChainId, Item } from './types';
 export const COLS = 10;
 export const ROWS = 10;
 
-export const AP_MAX = 100;
-export const AP_REGEN_MS = 60_000; // 1분에 1개 (충전 버튼은 즉시 가득 채움)
-
 export const START_ITEMS = 10; // 스테이지 시작 시 깔리는 A 개수 (정답 칸이 아닌 곳에)
 export const STAGE_COUNT = 30; // 총 스테이지 수
 
@@ -19,7 +16,7 @@ export const CHAINS: Record<ChainId, readonly string[]> = {
 export const CHAIN_IDS = Object.keys(CHAINS) as ChainId[];
 
 /**
- * 생성기 버튼: 누르면 from~to 구간의 글자 1개가 무작위로 나옴 (AP cost 소모).
+ * 생성기 버튼: 누르면 from~to 구간의 글자 1개가 무작위로 나옴. cost만큼 'AP 총 사용량'에 더해져요 (AP 제한은 없음).
  * 구간의 첫 글자가 가장 잘 나오고 뒤로 갈수록 확률이 decay 배씩 줄어요.
  *   예) decay 0.4, W~Z → W 약 62% · X 25% · Y 10% · Z 4%
  * decay가 작을수록 앞글자 쏠림이 심하고(0.2면 뒷글자는 거의 안 나옴), 클수록(0.7이면) 고르게 나와요.

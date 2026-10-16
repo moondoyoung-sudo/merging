@@ -5,7 +5,7 @@ import { Board } from './components/Board';
 import { hueOf } from './components/Tile';
 import { ClueList } from './components/ClueList';
 import { LetterGuide } from './components/LetterGuide';
-import { AP_MAX, GENERATORS, STAGE_COUNT } from './game/config';
+import { GENERATORS, STAGE_COUNT } from './game/config';
 
 import { generatorLabel } from './game/generators';
 import { completedWordIds, itemForLetter, lockedMask } from './game/rules';
@@ -27,12 +27,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <div className="hud">
-        <ApBar ap={state.ap} used={state.apUsed} msUntilNext={game.msUntilNext} />
-        <button className="refill" onClick={game.refill} disabled={state.ap >= AP_MAX}>
-          AP 충전<span>무료 · 100까지</span>
-        </button>
-      </div>
+      <ApBar used={state.apUsed} />
 
       <div className="gens">
         {GENERATORS.map((g) => (
@@ -41,7 +36,6 @@ export default function App() {
             className="gen"
             style={{ '--hue': hueOf(itemForLetter(g.from)?.level ?? 0) } as CSSProperties}
             onClick={() => game.generate(g)}
-            disabled={state.ap < g.cost}
           >
             {generatorLabel(g)}
             <span>AP -{g.cost}</span>
@@ -67,7 +61,7 @@ export default function App() {
           </span>
           <button
             onClick={() => {
-              if (confirm('이 스테이지의 판을 처음 상태로 되돌릴까요? (AP와 퍼즐은 그대로예요)')) game.restartStage();
+              if (confirm('판을 처음 상태로 되돌릴까요?\n지금까지 만든 글자가 모두 사라지고, 시작 글자만 남아요. (퍼즐은 그대로예요)')) game.restartStage();
             }}
           >
             다시
@@ -93,10 +87,10 @@ export default function App() {
               <p>
                 {STAGE_COUNT}개 스테이지를 모두 클리어했어요!
                 <br />
-                새 퍼즐로 처음부터 다시 도전할 수 있어요.
+                새 퍼즐로 처음부터 다시 도전할 수 있어요. (판의 글자는 그대로 이어져요)
               </p>
             ) : (
-              <p>다음 스테이지는 새로운 퍼즐이 만들어져요.</p>
+              <p>다음 스테이지는 새로운 퍼즐이 만들어지고, 지금 만든 글자는 그대로 이어져요.</p>
             )}
             <button onClick={game.nextStage}>{isLastStage ? '처음부터 다시' : '다음 스테이지'}</button>
           </div>

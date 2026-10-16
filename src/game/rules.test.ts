@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { msUntilNextAp, refillAp, regenAp, spendAp } from './ap';
-import { AP_MAX, AP_REGEN_MS, CHAINS, CHAIN_IDS, COLS, GENERATORS, ROWS, SPAWN_RULES } from './config';
+import { spendAp } from './ap';
+import { CHAINS, CHAIN_IDS, COLS, GENERATORS, ROWS, SPAWN_RULES } from './config';
 import { generatorLabel, generatorLetters, generatorProbabilities, rollGeneratorLetter } from './generators';
 import { compilePuzzle } from './puzzle';
 import { mulberry32 } from './random';
@@ -19,8 +19,6 @@ import {
 } from './rules';
 import type { GameState, Item } from './types';
 
-const T0 = 1_000_000;
-
 /*  0 1 2      C A B
  *  . 11 .     . D .   (AD: 세로, (0,1)에서 시작) */
 const puzzle = compilePuzzle({
@@ -37,8 +35,6 @@ const empty = (): GameState => ({
   stage: 1,
   seed: 1,
   board: Array(COLS * ROWS).fill(null),
-  ap: AP_MAX,
-  apUpdatedAt: T0,
   apUsed: 0,
   merges: 0,
 });
@@ -140,12 +136,11 @@ describe('생성기 버튼 (구간 + 확률)', () => {
   it('누르면 구간 안의 글자 1개가 나오고 AP가 소모·누적된다', () => {
     const rng = mulberry32(7);
     for (const g of GENERATORS) {
-      const r = applyGenerate(empty(), puzzle, g, T0, rng);
+      const r = applyGenerate(empty(), puzzle, g, rng);
       expect(r.ok).toBe(true);
       if (r.ok) {
         expect(generatorLetters(g)).toContain(labelOf(r.state.board[r.placedAt]!));
-        expect(r.state.ap).toBe(AP_MAX - g.cost);
-        expect(r.state.apUsed).toBe(g.cost);
+        expect(r.state.apUsed).toBe(g.cost); // 총 사용량에 누적
       }
     }
   });
@@ -154,27 +149,34 @@ describe('생성기 버튼 (구간 + 확률)', () => {
     let s = empty();
     s = { ...s, board: s.board.map(() => A(1)) };
     s = { ...s, board: s.board.map((c, i) => (i === 0 || i === 3 ? null : c)) }; // 0=정답칸, 3=일반칸
-    const r = applyGenerate(s, puzzle, gen, T0);
+    const r = applyGenerate(s, puzzle, gen);
     expect(r.ok && r.placedAt).toBe(3);
   });
 
   it('정답 칸밖에 빈 칸이 없으면 정답 칸도 사용', () => {
     let s = empty();
     s = { ...s, board: s.board.map((_, i) => (i === 0 ? null : A(1))) };
-    const r = applyGenerate(s, puzzle, gen, T0);
+    const r = applyGenerate(s, puzzle, gen);
     expect(r.ok && r.placedAt).toBe(0);
   });
 
-  it('AP가 부족하면 실패, 빈 칸이 없어도 실패', () => {
-    expect(applyGenerate({ ...empty(), ap: 0 }, puzzle, gen, T0)).toEqual({ ok: false, reason: 'no-ap' });
+  it('AP 제한이 없어서 몇 번이든 생성할 수 있고, 빈 칸이 없을 때만 실패', () => {
+    let s = empty();
+    for (let i = 0; i < 60; i++) {
+      const r = applyGenerate(s, puzzle, gen, mulberry32(i + 1));
+      expect(r.ok).toBe(true);
+      if (r.ok) s = r.state;
+    }
+    expect(s.apUsed).toBe(60);
+    expect(s.board.filter(Boolean)).toHaveLength(60);
     const full = { ...empty(), board: empty().board.map(() => A(1)) };
-    expect(applyGenerate(full, puzzle, gen, T0)).toEqual({ ok: false, reason: 'no-space' });
+    expect(applyGenerate(full, puzzle, gen)).toEqual({ ok: false, reason: 'no-space' });
   });
 
   it('더블클릭 생성 규칙은 꺼져 있다 (생성은 생성기 버튼으로만)', () => {
     expect(SPAWN_RULES).toHaveLength(0);
     expect(getSpawnDrops(A(2))).toBeNull();
-    expect(applySpawn(put(empty(), 40, A(2)), puzzle, 40, T0)).toEqual({ ok: false, reason: 'not-spawnable' });
+    expect(applySpawn(put(empty(), 40, A(2)), puzzle, 40)).toEqual({ ok: false, reason: 'not-spawnable' });
   });
 });
 
@@ -202,42 +204,28 @@ describe('알파벳 체인 (A~Z 한 줄)', () => {
   });
 });
 
-describe('AP', () => {
-  it('1분에 1개 충전, 최대 100', () => {
-    const s = { ...empty(), ap: 10 };
-    expect(regenAp(s, T0 + AP_REGEN_MS * 5 + 1000).ap).toBe(15);
-    expect(regenAp(s, T0 + AP_REGEN_MS * 500).ap).toBe(AP_MAX);
-  });
-  it('가득 찬 상태에서 쓰면 그 시점부터 충전 시작', () => {
-    const s = spendAp(empty(), 1, T0 + 30_000)!;
-    expect(s.ap).toBe(99);
-    expect(msUntilNextAp(s, T0 + 30_000)).toBe(AP_REGEN_MS);
-  });
-  it('총 사용량은 쓸 때마다 누적되고, 충전해도 줄지 않는다', () => {
+describe('AP 총 사용량 (충전/제한 없음)', () => {
+  it('쓸 때마다 누적되기만 한다', () => {
     let s: GameState = empty();
-    s = spendAp(s, 3, T0)!;
-    s = spendAp(s, 2, T0)!;
+    s = spendAp(s, 3);
+    s = spendAp(s, 2);
     expect(s.apUsed).toBe(5);
-    s = refillAp(s, T0 + 1000);
-    expect(s.apUsed).toBe(5);
-    s = spendAp(s, 1, T0 + 2000)!;
-    expect(s.apUsed).toBe(6);
-    expect(spendAp({ ...s, ap: 0 }, 1, T0 + 2000)).toBeNull(); // 실패하면 누적 안 됨
   });
-  it('충전 버튼: 대가 없이 100까지 채움, 이미 가득이면 그대로', () => {
-    const low = { ...empty(), ap: 7, apUpdatedAt: T0 - 5000 };
-    const r = refillAp(low, T0);
-    expect(r.ap).toBe(AP_MAX);
-    expect(r.apUsed).toBe(low.apUsed);
-    expect(msUntilNextAp(r, T0)).toBeNull();
-    expect(refillAp(r, T0)).toBe(r);
+  it('게임 상태에는 AP 잔량/충전 시각이 없다', () => {
+    const s = createInitialState();
+    expect('ap' in s).toBe(false);
+    expect('apUpdatedAt' in s).toBe(false);
   });
 });
 
 describe('저장 데이터 검증', () => {
   it('정상 데이터는 통과, 깨진 데이터는 null', () => {
-    expect(sanitizeState(createInitialState(T0))).not.toBeNull();
-    expect(sanitizeState(createInitialState(T0))?.apUsed).toBe(0);
+    expect(sanitizeState(createInitialState())).not.toBeNull();
+    expect(sanitizeState(createInitialState())?.apUsed).toBe(0);
+    // 예전 저장 데이터(ap, apUpdatedAt 포함)도 읽히고, 그 값은 버려진다
+    const old = sanitizeState({ ...createInitialState(), ap: 5, apUpdatedAt: 123 });
+    expect(old).not.toBeNull();
+    expect(old && 'ap' in old).toBe(false);
     expect(sanitizeState({ ...empty(), stage: 99 })).toBeNull();
     const bad = empty();
     bad.board[0] = { chain: 'A', level: 99 };
